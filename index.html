@@ -3,12 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>2026 新年倒计时 & 许愿墙</title>
+    <title>2026 新年倒计时 (修复版)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="//cdn.jsdelivr.net/npm/leancloud-storage@4.15.0/dist/av-min.js"></script>
+    <!-- 核心修复：更换为更稳定的 unpkg 源，并添加 https 协议头 -->
+    <script src="https://unpkg.com/leancloud-storage@4.15.0/dist/av-min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     
     <style>
@@ -23,6 +24,8 @@
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         .qr-modal { animation: popIn 0.3s ease-out; }
         @keyframes popIn { 0% { opacity: 0; transform: scale(0.9); } 100% { opacity: 1; transform: scale(1); } }
+        /* 调试日志区域样式 */
+        .debug-console { font-family: monospace; font-size: 12px; line-height: 1.4; }
     </style>
 </head>
 <body class="bg-red-950">
@@ -36,16 +39,6 @@
             appKey: "ejy1x6UcO9b5EavRxQOgr1m0",
             serverURL: "https://mx6b42q9.api.lncldglobal.com"
         };
-
-        let isDbReady = false;
-        if (LEANCLOUD_CONFIG.appId.length > 20 && window.AV) {
-            try {
-                AV.init(LEANCLOUD_CONFIG);
-                isDbReady = true;
-            } catch (e) {
-                isDbReady = true;
-            }
-        }
 
         // SVG Icons
         const Sparkles = ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L12 3Z"/><path d="M5 3v4"/><path d="M9 3v4"/><path d="M5 7h4"/><path d="M3 5h4"/></svg>;
@@ -148,7 +141,45 @@
             const [likingId, setLikingId] = useState(null); 
             const [showShare, setShowShare] = useState(false);
             const [isRefreshing, setIsRefreshing] = useState(false);
-            const [errorMsg, setErrorMsg] = useState('');
+            const [logs, setLogs] = useState([]); // 调试日志
+            const [isDbReady, setIsDbReady] = useState(false);
+
+            function addLog(msg, type='info') {
+                const time = new Date().toLocaleTimeString();
+                setLogs(prev => [...prev, { time, msg, type }]);
+            }
+
+            // 初始化数据库逻辑优化
+            useEffect(() => {
+                const initDB = () => {
+                    // 如果 SDK 还没加载完成，稍后再试
+                    if (!window.AV) {
+                        setTimeout(initDB, 500);
+                        return;
+                    }
+                    
+                    try {
+                        if (LEANCLOUD_CONFIG.appId.length > 20) {
+                            AV.init(LEANCLOUD_CONFIG);
+                            setIsDbReady(true);
+                            addLog("LeanCloud 初始化成功");
+                        }
+                    } catch (e) {
+                        // 如果因为“已经初始化”而报错，我们认为是成功的
+                        setIsDbReady(true);
+                        addLog("LeanCloud 已就绪 (复用实例)");
+                    }
+                };
+
+                initDB();
+                
+                // 3秒后如果还没好，报超时错误
+                setTimeout(() => {
+                    if (!window.AV) {
+                        addLog("LeanCloud SDK 加载超时，请检查网络", 'error');
+                    }
+                }, 3000);
+            }, []);
 
             function calculateTimeLeft() {
                 const now = new Date().getTime();
@@ -169,17 +200,19 @@
 
             const fetchWishes = async () => {
                 if (!isDbReady) {
-                    setErrorMsg("无法连接到数据库");
+                    addLog("等待数据库连接...", 'warn');
                     return;
                 }
                 setIsRefreshing(true);
-                setErrorMsg('');
+                addLog("正在查询 Wishes 表...");
                 try {
                     const query = new AV.Query('Wishes');
                     query.descending('likes');
                     query.addDescending('createdAt');
                     query.limit(50); 
                     const results = await query.find();
+                    
+                    addLog(`查询成功！获取到 ${results.length} 条数据`);
                     
                     const formattedWishes = results.map(item => ({
                         id: item.id, 
@@ -189,35 +222,43 @@
                     setWishes(formattedWishes);
                 } catch (error) {
                     console.error('获取列表失败:', error);
-                    setErrorMsg("读取数据失败，请检查网络或LeanCloud权限设置");
+                    addLog(`查询失败: ${error.message} (Code: ${error.code})`, 'error');
+                    
+                    if (error.code === 403) {
+                         addLog("⚠️ 403错误：请检查 LeanCloud 后台 'find' 权限是否已开放给所有用户", 'error');
+                    }
                 } finally {
                     setIsRefreshing(false);
                 }
             };
 
-            useEffect(() => { fetchWishes(); }, []);
+            // 监听数据库就绪后立即查询
+            useEffect(() => {
+                if (isDbReady) {
+                    fetchWishes();
+                }
+            }, [isDbReady]);
 
             const handleAddWish = async (e) => {
                 e.preventDefault();
                 if (!wishInput.trim()) return;
-                if (!isDbReady) { alert("数据库配置未加载"); return; }
-
                 setLoading(true);
+                addLog("正在发布愿望...");
                 try {
                     const WishObject = AV.Object.extend('Wishes');
                     const wish = new WishObject();
                     wish.set('text', wishInput);
                     wish.set('likes', 0);
-                    
                     const acl = new AV.ACL();
                     acl.setPublicReadAccess(true);
                     acl.setPublicWriteAccess(true);
                     wish.setACL(acl);
-
                     await wish.save();
+                    addLog("发布成功！");
                     setWishInput('');
                     fetchWishes(); 
                 } catch (error) {
+                    addLog(`发布失败: ${error.message}`, 'error');
                     alert("发布失败: " + error.message);
                 } finally {
                     setLoading(false);
@@ -225,7 +266,6 @@
             };
 
             const handleLike = async (id, currentLikes) => {
-                if (!isDbReady || likingId === id) return;
                 if (!id) return;
                 setLikingId(id);
                 setWishes(prevWishes => prevWishes.map(w => 
@@ -235,7 +275,12 @@
                     const wish = AV.Object.createWithoutData('Wishes', id);
                     wish.increment('likes', 1);
                     await wish.save();
+                    addLog(`点赞成功 (ID: ${id})`);
                 } catch (error) {
+                    addLog(`点赞失败: ${error.message}`, 'error');
+                    if (error.code === 403) {
+                        addLog("⚠️ 请检查 'update' 权限是否开放", 'error');
+                    }
                     setWishes(prevWishes => prevWishes.map(w => 
                         w.id === id ? { ...w, likes: currentLikes } : w
                     ));
@@ -245,7 +290,7 @@
             };
 
             return (
-                <div className="min-h-screen bg-gradient-to-b from-red-950 via-red-900 to-red-800 text-white font-sans relative overflow-x-hidden selection:bg-yellow-500 selection:text-red-900">
+                <div className="min-h-screen bg-gradient-to-b from-red-950 via-red-900 to-red-800 text-white font-sans relative overflow-x-hidden selection:bg-yellow-500 selection:text-red-900 pb-40">
                     <Fireworks />
                     <ShareModal isOpen={showShare} onClose={() => setShowShare(false)} />
 
@@ -319,12 +364,7 @@
                             </form>
 
                             <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
-                                {errorMsg ? (
-                                    <div className="text-center py-8 text-red-300/80 bg-red-900/30 rounded-lg border border-red-500/30">
-                                        <p className="mb-2">⚠️ {errorMsg}</p>
-                                        <button onClick={fetchWishes} className="text-yellow-400 underline text-sm">点击重试</button>
-                                    </div>
-                                ) : wishes.length === 0 ? (
+                                {wishes.length === 0 ? (
                                     <div className="text-center py-8 text-red-300/50 italic">
                                         {isRefreshing ? '正在加载愿望...' : '还没有愿望，快来抢沙发！'}
                                     </div>
@@ -353,16 +393,29 @@
                             </div>
                         </div>
 
-                        <footer className="mt-16 text-center text-red-400/60 text-sm pb-8">
+                        {/* 调试控制台 - 位于页面底部 */}
+                        <div className="w-full max-w-2xl mt-8 bg-black/80 rounded-lg p-4 text-left border border-gray-700">
+                            <h3 className="text-xs font-bold text-gray-400 mb-2 uppercase tracking-wider border-b border-gray-700 pb-1">Debug Console (调试日志)</h3>
+                            <div className="debug-console h-32 overflow-y-auto custom-scrollbar text-gray-300">
+                                {logs.length === 0 ? (
+                                    <div className="text-gray-600 italic">等待日志...</div>
+                                ) : (
+                                    logs.map((log, i) => (
+                                        <div key={i} className={`${log.type === 'error' ? 'text-red-400' : log.type === 'warn' ? 'text-yellow-400' : 'text-green-400'} mb-1`}>
+                                            <span className="opacity-50">[{log.time}]</span> {log.msg}
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </div>
+
+                        <footer className="mt-8 text-center text-red-400/60 text-sm">
                             <p>© 2026 New Year Countdown</p>
                             <div className="flex justify-center gap-4 mt-2">
                                 <button onClick={() => setShowShare(true)} className="text-xs text-yellow-500 hover:text-yellow-400 underline cursor-pointer">
                                     获取分享二维码
                                 </button>
                             </div>
-                            <p className="text-xs mt-2 text-yellow-500/50 border border-yellow-500/20 rounded px-2 py-1 inline-block">
-                                💡 微信无法打开？请扫码或点击右上角选择“在浏览器打开”
-                            </p>
                         </footer>
                     </div>
                 </div>
