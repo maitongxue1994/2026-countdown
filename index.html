@@ -8,6 +8,8 @@
     <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- 引入二维码生成库 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     
     <style>
         .custom-scrollbar::-webkit-scrollbar { width: 6px; }
@@ -19,6 +21,12 @@
         .animate-fade-in-down { animation: fade-in-down 1s ease-out; }
         .loader { border: 2px solid rgba(255,255,255,0.1); border-radius: 50%; border-top: 2px solid #fbbf24; width: 14px; height: 14px; animation: spin 1s linear infinite; display: inline-block; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        /* 弹窗动画 */
+        .qr-modal { animation: popIn 0.3s ease-out; }
+        @keyframes popIn { 0% { opacity: 0; transform: scale(0.9); } 100% { opacity: 1; transform: scale(1); } }
+        /* 烟花按钮动画 */
+        .firework-btn:active { transform: scale(0.9); }
+        .firework-btn:hover { text-shadow: 0 0 10px #fbbf24; }
     </style>
 </head>
 <body class="bg-red-950">
@@ -31,8 +39,9 @@
         const Sparkles = ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L12 3Z"/><path d="M5 3v4"/><path d="M9 3v4"/><path d="M5 7h4"/><path d="M3 5h4"/></svg>;
         const Heart = ({ className, fill }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill={fill ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>;
         const Send = ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>;
+        const CloseIcon = ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>;
 
-        // 烟花背景
+        // 烟花背景组件 (增强版)
         const Fireworks = () => {
             const canvasRef = useRef(null);
             useEffect(() => {
@@ -43,6 +52,7 @@
                 canvas.width = width; canvas.height = height;
                 const particles = [];
                 const colors = ['#FFD700', '#FF4500', '#FF69B4', '#00BFFF', '#ADFF2F', '#ffffff'];
+                
                 class Particle {
                     constructor(x, y, color) {
                         this.x = x; this.y = y; this.color = color;
@@ -54,23 +64,39 @@
                     update() { this.x += this.vx; this.y += this.vy; this.vy += this.gravity; this.alpha -= this.decay; }
                     draw(ctx) { ctx.save(); ctx.globalAlpha = this.alpha; ctx.beginPath(); ctx.arc(this.x, this.y, 2, 0, Math.PI * 2); ctx.fillStyle = this.color; ctx.fill(); ctx.restore(); }
                 }
+
                 const createFirework = () => {
                     const x = Math.random() * width; const y = Math.random() * (height / 2);
                     const color = colors[Math.floor(Math.random() * colors.length)];
                     for (let i = 0; i < 40; i++) particles.push(new Particle(x, y, color));
                 };
+
+                // 监听手动触发烟花事件
+                const handleManualFirework = () => {
+                    // 连续发射3组烟花
+                    for(let i=0; i<3; i++) {
+                        setTimeout(() => createFirework(), i * 150);
+                    }
+                };
+                window.addEventListener('manual-firework', handleManualFirework);
+
                 const loop = () => {
                     ctx.fillStyle = 'rgba(20, 0, 10, 0.2)'; ctx.fillRect(0, 0, width, height);
-                    if (Math.random() < 0.03) createFirework();
+                    if (Math.random() < 0.03) createFirework(); // 自动烟花
                     for (let i = particles.length - 1; i >= 0; i--) {
                         particles[i].update(); particles[i].draw(ctx);
                         if (particles[i].alpha <= 0) particles.splice(i, 1);
                     }
                     requestAnimationFrame(loop);
                 };
+
                 const handleResize = () => { width = window.innerWidth; height = window.innerHeight; canvas.width = width; canvas.height = height; };
                 window.addEventListener('resize', handleResize); loop();
-                return () => window.removeEventListener('resize', handleResize);
+                
+                return () => {
+                    window.removeEventListener('resize', handleResize);
+                    window.removeEventListener('manual-firework', handleManualFirework);
+                };
             }, []);
             return <canvas ref={canvasRef} className="fixed top-0 left-0 w-full h-full pointer-events-none z-0"/>;
         };
@@ -89,6 +115,36 @@
             );
         }
 
+        // 分享弹窗组件
+        function ShareModal({ isOpen, onClose }) {
+            const qrRef = useRef(null);
+            useEffect(() => {
+                if (isOpen && qrRef.current) {
+                    qrRef.current.innerHTML = "";
+                    new QRCode(qrRef.current, {
+                        text: window.location.href, // 自动获取当前网址
+                        width: 180,
+                        height: 180,
+                        colorDark : "#000000",
+                        colorLight : "#ffffff",
+                        correctLevel : QRCode.CorrectLevel.H
+                    });
+                }
+            }, [isOpen]);
+            if (!isOpen) return null;
+            return (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
+                    <div className="bg-white rounded-2xl p-6 max-w-sm w-full text-center qr-modal shadow-2xl relative" onClick={e => e.stopPropagation()}>
+                        <button onClick={onClose} className="absolute right-4 top-4 text-gray-400 hover:text-gray-600"><CloseIcon className="w-6 h-6" /></button>
+                        <h3 className="text-xl font-bold text-red-800 mb-2">邀请好友一起许愿</h3>
+                        <p className="text-sm text-gray-500 mb-4">微信/朋友圈 长按扫码进入</p>
+                        <div className="bg-white p-2 rounded-xl border-2 border-red-100 inline-block mb-4 shadow-inner"><div ref={qrRef} className="opacity-90"></div></div>
+                        <p className="text-xs text-red-400 bg-red-50 py-2 rounded-lg">💡 扫码可直接访问，无需担心拦截！</p>
+                    </div>
+                </div>
+            );
+        }
+
         // 主程序
         function NewYearCountdown() {
             const targetDate = new Date('2026-01-01T00:00:00').getTime();
@@ -97,6 +153,7 @@
             const [wishes, setWishes] = useState([]);
             const [loading, setLoading] = useState(false);
             const [likingId, setLikingId] = useState(null); 
+            const [showShare, setShowShare] = useState(false); // 控制分享弹窗
 
             function calculateTimeLeft() {
                 const now = new Date().getTime();
@@ -115,7 +172,7 @@
                 return () => clearInterval(timer);
             }, []);
 
-            // 核心修改：通过 Vercel API 中转获取数据
+            // 通过 Vercel API 获取数据
             const fetchWishes = async () => {
                 try {
                     const res = await fetch('/api/wishes');
@@ -135,7 +192,9 @@
                 if (!wishInput.trim()) return;
                 setLoading(true);
                 try {
-                    // 发送给中转 API
+                    // 发布时顺便放个烟花庆祝一下
+                    window.dispatchEvent(new Event('manual-firework'));
+                    
                     const res = await fetch('/api/wishes', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -162,7 +221,6 @@
                 setWishes(prev => prev.map(w => w.id === id ? { ...w, likes: w.likes + 1 } : w));
                 
                 try {
-                    // 发送给中转 API
                     await fetch('/api/wishes', {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },
@@ -179,6 +237,9 @@
             return (
                 <div className="min-h-screen bg-gradient-to-b from-red-950 via-red-900 to-red-800 text-white font-sans relative overflow-x-hidden selection:bg-yellow-500 selection:text-red-900">
                     <Fireworks />
+                    
+                    {/* 分享弹窗 */}
+                    <ShareModal isOpen={showShare} onClose={() => setShowShare(false)} />
 
                     <div className="relative z-10 container mx-auto px-4 py-8 md:py-12 flex flex-col items-center min-h-screen">
                         
@@ -204,11 +265,21 @@
                         </div>
 
                         <div className="w-full max-w-2xl bg-white/10 backdrop-blur-md rounded-3xl p-6 md:p-8 border border-white/10 shadow-2xl relative">
-                            <div className="flex items-center justify-between mb-6">
-                                <h2 className="text-xl md:text-2xl font-bold flex items-center gap-2 text-yellow-200">
-                                    <Heart className="w-6 h-6 text-red-400 fill-red-400" />
-                                    <span>云端许愿墙</span>
-                                </h2>
+                            
+                            {/* 许愿墙 Header + 分享按钮 */}
+                            <div className="flex flex-col md:flex-row items-center justify-between mb-6 gap-3">
+                                <div className="flex items-center gap-3">
+                                    <h2 className="text-xl md:text-2xl font-bold flex items-center gap-2 text-yellow-200">
+                                        <Heart className="w-6 h-6 text-red-400 fill-red-400" />
+                                        <span>云端许愿墙</span>
+                                    </h2>
+                                    <button 
+                                        onClick={() => setShowShare(true)}
+                                        className="bg-gradient-to-r from-yellow-500 to-amber-500 hover:from-yellow-400 hover:to-amber-400 text-red-900 text-xs font-bold px-3 py-1.5 rounded-full transition-all shadow-lg active:scale-95 flex items-center gap-1 animate-pulse border border-yellow-300/50"
+                                    >
+                                        <span>分享许下新年愿望吧！🎆</span>
+                                    </button>
+                                </div>
                                 <span className="text-xs md:text-sm text-red-200 bg-red-900/50 px-3 py-1 rounded-full border border-red-700">
                                     {wishes.length} 条愿望
                                 </span>
@@ -220,8 +291,20 @@
                                     value={wishInput}
                                     onChange={(e) => setWishInput(e.target.value)}
                                     placeholder="写下你的 2026 愿望..."
-                                    className="w-full bg-red-950/30 border-2 border-red-800/50 text-white placeholder-red-300/50 rounded-xl py-3 md:py-4 pl-5 pr-14 focus:outline-none focus:border-yellow-400/50 focus:ring-2 focus:ring-yellow-400/20 transition-all shadow-inner"
+                                    className="w-full bg-red-950/30 border-2 border-red-800/50 text-white placeholder-red-300/50 rounded-xl py-3 md:py-4 pl-5 pr-28 focus:outline-none focus:border-yellow-400/50 focus:ring-2 focus:ring-yellow-400/20 transition-all shadow-inner"
                                 />
+                                
+                                {/* 烟花特效按钮 */}
+                                <button
+                                    type="button"
+                                    onClick={() => window.dispatchEvent(new Event('manual-firework'))}
+                                    className="absolute right-16 top-2 bottom-2 text-2xl hover:scale-125 transition-transform cursor-pointer firework-btn flex items-center justify-center w-10 h-10"
+                                    title="点我放烟花！"
+                                >
+                                    🎆
+                                </button>
+
+                                {/* 发送按钮 */}
                                 <button 
                                     type="submit"
                                     disabled={!wishInput.trim() || loading}
@@ -264,7 +347,7 @@
                         <footer className="mt-16 text-center text-red-400/60 text-sm pb-8">
                             <p>© 2026 New Year Countdown</p>
                             <p className="text-xs mt-1 opacity-50">
-                                💡 如果微信打不开，请点击右上角选择“在浏览器打开”
+                                💡 如果微信打不开，请扫码或点击右上角选择“在浏览器打开”
                             </p>
                         </footer>
                     </div>
