@@ -4,29 +4,25 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>2026 新年倒计时 & 许愿墙</title>
-    <!-- 引入 Tailwind CSS (样式库) -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- 引入 React 和 ReactDOM (前端框架) -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-    <!-- 引入 Babel (让浏览器能运行 React 代码) -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <!-- 引入 LeanCloud SDK (数据库支持) -->
     <script src="//cdn.jsdelivr.net/npm/leancloud-storage@4.15.0/dist/av-min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     
     <style>
         .custom-scrollbar::-webkit-scrollbar { width: 6px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.1); border-radius: 10px; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255, 215, 0, 0.3); border-radius: 10px; }
-        
         @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
         .animate-float { animation: float 6s ease-in-out infinite; }
-        
         @keyframes fade-in-down { 0% { opacity: 0; transform: translateY(-20px); } 100% { opacity: 1; transform: translateY(0); } }
         .animate-fade-in-down { animation: fade-in-down 1s ease-out; }
-        
         .loader { border: 2px solid rgba(255,255,255,0.1); border-radius: 50%; border-top: 2px solid #fbbf24; width: 14px; height: 14px; animation: spin 1s linear infinite; display: inline-block; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .qr-modal { animation: popIn 0.3s ease-out; }
+        @keyframes popIn { 0% { opacity: 0; transform: scale(0.9); } 100% { opacity: 1; transform: scale(1); } }
     </style>
 </head>
 <body class="bg-red-950">
@@ -35,9 +31,6 @@
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
 
-        // ==========================================
-        //  1. LeanCloud 数据库配置
-        // ==========================================
         const LEANCLOUD_CONFIG = {
             appId: "Mx6b42Q9ACDzsoOnNmNBDhJh-MdYXbMMI", 
             appKey: "ejy1x6UcO9b5EavRxQOgr1m0",
@@ -49,20 +42,18 @@
             try {
                 AV.init(LEANCLOUD_CONFIG);
                 isDbReady = true;
-                console.log("✅ LeanCloud 初始化成功");
             } catch (e) {
-                // 如果已经初始化过，SDK会抛出错误，我们忽略它认为已就绪
-                console.log("⚠️ LeanCloud 可能已初始化:", e.message);
                 isDbReady = true;
             }
         }
 
-        // ==========================================
-        //  UI 组件
-        // ==========================================
+        // SVG Icons
         const Sparkles = ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L12 3Z"/><path d="M5 3v4"/><path d="M9 3v4"/><path d="M5 7h4"/><path d="M3 5h4"/></svg>;
         const Heart = ({ className, fill }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill={fill ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>;
         const Send = ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>;
+        const ShareIcon = ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" x2="12" y1="2" y2="15"/></svg>;
+        const CloseIcon = ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>;
+        const RefreshIcon = ({ className, spinning }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`${className} ${spinning ? 'animate-spin' : ''}`}><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21h5v-5"/></svg>;
 
         const Fireworks = () => {
             const canvasRef = useRef(null);
@@ -119,17 +110,45 @@
             );
         }
 
-        // ==========================================
-        //  主程序逻辑
-        // ==========================================
+        function ShareModal({ isOpen, onClose }) {
+            const qrRef = useRef(null);
+            useEffect(() => {
+                if (isOpen && qrRef.current) {
+                    qrRef.current.innerHTML = "";
+                    new QRCode(qrRef.current, {
+                        text: window.location.href,
+                        width: 180,
+                        height: 180,
+                        colorDark : "#000000",
+                        colorLight : "#ffffff",
+                        correctLevel : QRCode.CorrectLevel.H
+                    });
+                }
+            }, [isOpen]);
+            if (!isOpen) return null;
+            return (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
+                    <div className="bg-white rounded-2xl p-6 max-w-sm w-full text-center qr-modal shadow-2xl relative" onClick={e => e.stopPropagation()}>
+                        <button onClick={onClose} className="absolute right-4 top-4 text-gray-400 hover:text-gray-600"><CloseIcon className="w-6 h-6" /></button>
+                        <h3 className="text-xl font-bold text-red-800 mb-2">邀请好友一起许愿</h3>
+                        <p className="text-sm text-gray-500 mb-4">微信/朋友圈 长按扫码进入</p>
+                        <div className="bg-white p-2 rounded-xl border-2 border-red-100 inline-block mb-4 shadow-inner"><div ref={qrRef} className="opacity-90"></div></div>
+                        <p className="text-xs text-red-400 bg-red-50 py-2 rounded-lg">💡 如果微信无法直接打开链接<br/>扫这个码是最好的办法！</p>
+                    </div>
+                </div>
+            );
+        }
+
         function NewYearCountdown() {
             const targetDate = new Date('2026-01-01T00:00:00').getTime();
-            
             const [timeLeft, setTimeLeft] = useState(calculateTimeLeft());
             const [wishInput, setWishInput] = useState('');
             const [wishes, setWishes] = useState([]);
             const [loading, setLoading] = useState(false);
             const [likingId, setLikingId] = useState(null); 
+            const [showShare, setShowShare] = useState(false);
+            const [isRefreshing, setIsRefreshing] = useState(false);
+            const [errorMsg, setErrorMsg] = useState('');
 
             function calculateTimeLeft() {
                 const now = new Date().getTime();
@@ -148,9 +167,13 @@
                 return () => clearInterval(timer);
             }, []);
 
-            // --- 核心修复 1: 正确获取 ID ---
             const fetchWishes = async () => {
-                if (!isDbReady) return;
+                if (!isDbReady) {
+                    setErrorMsg("无法连接到数据库");
+                    return;
+                }
+                setIsRefreshing(true);
+                setErrorMsg('');
                 try {
                     const query = new AV.Query('Wishes');
                     query.descending('likes');
@@ -159,23 +182,21 @@
                     const results = await query.find();
                     
                     const formattedWishes = results.map(item => ({
-                        id: item.id, // 【重要修复】这里必须用 item.id，旧代码用了 objectId 是错的
+                        id: item.id, 
                         text: item.get('text'),
                         likes: item.get('likes') || 0
                     }));
-                    
-                    // 调试日志：检查ID是否都正常
-                    console.log("加载成功, 数据预览:", formattedWishes.slice(0, 2));
-                    
                     setWishes(formattedWishes);
                 } catch (error) {
                     console.error('获取列表失败:', error);
+                    setErrorMsg("读取数据失败，请检查网络或LeanCloud权限设置");
+                } finally {
+                    setIsRefreshing(false);
                 }
             };
 
             useEffect(() => { fetchWishes(); }, []);
 
-            // --- 发布功能 ---
             const handleAddWish = async (e) => {
                 e.preventDefault();
                 if (!wishInput.trim()) return;
@@ -188,16 +209,14 @@
                     wish.set('text', wishInput);
                     wish.set('likes', 0);
                     
-                    // 权限：允许所有人读写
                     const acl = new AV.ACL();
                     acl.setPublicReadAccess(true);
                     acl.setPublicWriteAccess(true);
                     wish.setACL(acl);
 
                     await wish.save();
-                    console.log("发布成功");
                     setWishInput('');
-                    fetchWishes(); // 重新拉取
+                    fetchWishes(); 
                 } catch (error) {
                     alert("发布失败: " + error.message);
                 } finally {
@@ -205,35 +224,21 @@
                 }
             };
 
-            // --- 核心修复 2: 点赞逻辑 ---
             const handleLike = async (id, currentLikes) => {
                 if (!isDbReady || likingId === id) return;
-                
-                // 如果 ID 是 undefined，说明数据有问题，禁止操作
-                if (!id) {
-                    alert("数据异常：无法获取许愿条ID，请刷新页面重试");
-                    return;
-                }
-
+                if (!id) return;
                 setLikingId(id);
-
-                // 乐观更新：只更新匹配的 ID
                 setWishes(prevWishes => prevWishes.map(w => 
                     w.id === id ? { ...w, likes: w.likes + 1 } : w
                 ));
-
                 try {
                     const wish = AV.Object.createWithoutData('Wishes', id);
                     wish.increment('likes', 1);
                     await wish.save();
-                    console.log(`ID ${id} 点赞成功`);
                 } catch (error) {
-                    console.error("点赞失败:", error);
-                    // 失败回滚
                     setWishes(prevWishes => prevWishes.map(w => 
                         w.id === id ? { ...w, likes: currentLikes } : w
                     ));
-                    alert("点赞失败: 可能是网络问题或该条愿望是旧数据(无权限)");
                 } finally {
                     setLikingId(null);
                 }
@@ -242,10 +247,10 @@
             return (
                 <div className="min-h-screen bg-gradient-to-b from-red-950 via-red-900 to-red-800 text-white font-sans relative overflow-x-hidden selection:bg-yellow-500 selection:text-red-900">
                     <Fireworks />
+                    <ShareModal isOpen={showShare} onClose={() => setShowShare(false)} />
 
                     <div className="relative z-10 container mx-auto px-4 py-8 md:py-12 flex flex-col items-center min-h-screen">
                         
-                        {/* 顶部 Header */}
                         <header className="text-center mb-8 md:mb-12 animate-fade-in-down">
                             <div className="flex items-center justify-center gap-3 mb-4 text-yellow-400">
                                 <Sparkles className="w-6 h-6 md:w-8 md:h-8 animate-pulse" />
@@ -260,7 +265,6 @@
                             </p>
                         </header>
 
-                        {/* 倒计时 */}
                         <div className="grid grid-cols-4 gap-2 md:gap-8 w-full max-w-4xl mb-12">
                             <TimeCard value={timeLeft.days} label="天" />
                             <TimeCard value={timeLeft.hours} label="时" />
@@ -268,8 +272,25 @@
                             <TimeCard value={timeLeft.seconds} label="秒" isSeconds={true} />
                         </div>
 
-                        {/* 许愿墙 */}
-                        <div className="w-full max-w-2xl bg-white/10 backdrop-blur-md rounded-3xl p-6 md:p-8 border border-white/10 shadow-2xl">
+                        <div className="w-full max-w-2xl bg-white/10 backdrop-blur-md rounded-3xl p-6 md:p-8 border border-white/10 shadow-2xl relative">
+                            {/* 右上角按钮组 */}
+                            <div className="absolute top-4 right-4 flex gap-2">
+                                <button 
+                                    onClick={fetchWishes}
+                                    className="text-yellow-400 hover:text-white transition-colors bg-white/10 p-2 rounded-full hover:bg-white/20"
+                                    title="刷新数据"
+                                >
+                                    <RefreshIcon className="w-5 h-5" spinning={isRefreshing} />
+                                </button>
+                                <button 
+                                    onClick={() => setShowShare(true)}
+                                    className="text-yellow-400 hover:text-white transition-colors bg-white/10 p-2 rounded-full hover:bg-white/20"
+                                    title="生成分享二维码"
+                                >
+                                    <ShareIcon className="w-5 h-5" />
+                                </button>
+                            </div>
+
                             <div className="flex items-center justify-between mb-6">
                                 <h2 className="text-xl md:text-2xl font-bold flex items-center gap-2 text-yellow-200">
                                     <Heart className="w-6 h-6 text-red-400 fill-red-400" />
@@ -298,9 +319,14 @@
                             </form>
 
                             <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
-                                {wishes.length === 0 ? (
+                                {errorMsg ? (
+                                    <div className="text-center py-8 text-red-300/80 bg-red-900/30 rounded-lg border border-red-500/30">
+                                        <p className="mb-2">⚠️ {errorMsg}</p>
+                                        <button onClick={fetchWishes} className="text-yellow-400 underline text-sm">点击重试</button>
+                                    </div>
+                                ) : wishes.length === 0 ? (
                                     <div className="text-center py-8 text-red-300/50 italic">
-                                        还没有愿望，快来抢沙发！
+                                        {isRefreshing ? '正在加载愿望...' : '还没有愿望，快来抢沙发！'}
                                     </div>
                                 ) : (
                                     wishes.map((wish) => (
@@ -310,7 +336,6 @@
                                                 <button 
                                                     onClick={() => handleLike(wish.id, wish.likes)}
                                                     className="flex items-center gap-1 text-xs text-red-300 hover:text-pink-400 transition-colors bg-black/20 px-2 py-1 rounded-full cursor-pointer hover:bg-black/30 min-w-[40px] justify-center"
-                                                    title="点赞"
                                                 >
                                                     {likingId === wish.id ? (
                                                         <span className="loader w-3 h-3 border-red-300 border-t-transparent"></span>
@@ -330,9 +355,13 @@
 
                         <footer className="mt-16 text-center text-red-400/60 text-sm pb-8">
                             <p>© 2026 New Year Countdown</p>
-                            <p className="text-xs mt-1 opacity-50">Powered by React & LeanCloud</p>
+                            <div className="flex justify-center gap-4 mt-2">
+                                <button onClick={() => setShowShare(true)} className="text-xs text-yellow-500 hover:text-yellow-400 underline cursor-pointer">
+                                    获取分享二维码
+                                </button>
+                            </div>
                             <p className="text-xs mt-2 text-yellow-500/50 border border-yellow-500/20 rounded px-2 py-1 inline-block">
-                                💡 如果微信打不开，请点击右上角选择“在浏览器打开”
+                                💡 微信无法打开？请扫码或点击右上角选择“在浏览器打开”
                             </p>
                         </footer>
                     </div>
